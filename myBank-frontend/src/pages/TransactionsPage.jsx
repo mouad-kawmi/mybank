@@ -1,8 +1,68 @@
 import React, { useState, useEffect } from 'react';
 import api from '../api/axios';
-import { ArrowDownLeft, ArrowUpRight, History, Filter, Download } from 'lucide-react';
+import { ArrowDownLeft, ArrowUpRight, Filter, Download } from 'lucide-react';
 import { motion } from 'framer-motion';
 
+// ─── Bouton de téléchargement du reçu PDF ───
+const DownloadReceiptButton = ({ transactionId, reference }) => {
+    const [downloading, setDownloading] = useState(false);
+
+    const handleDownload = async () => {
+        setDownloading(true);
+        try {
+            const response = await api.get(`/transactions/${transactionId}/receipt`, {
+                responseType: 'blob',
+            });
+
+            const url = window.URL.createObjectURL(
+                new Blob([response.data], { type: 'application/pdf' })
+            );
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `recu_transaction_${reference}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            window.URL.revokeObjectURL(url);
+        } catch (err) {
+            console.error('Erreur lors du téléchargement du reçu:', err);
+            alert('Impossible de télécharger le reçu. Veuillez réessayer.');
+        } finally {
+            setDownloading(false);
+        }
+    };
+
+    return (
+        <motion.button
+            whileHover={{ scale: 1.08 }}
+            whileTap={{ scale: 0.95 }}
+            onClick={handleDownload}
+            disabled={downloading}
+            title="Télécharger le reçu PDF"
+            className={`flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap
+                ${downloading
+                    ? 'bg-slate-700/50 text-slate-500 cursor-not-allowed'
+                    : 'bg-primary-500/10 text-primary-400 hover:bg-primary-500/20 border border-primary-500/20 hover:border-primary-500/40'
+                }`}
+        >
+            {downloading ? (
+                <>
+                    <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+                    </svg>
+                    Chargement...
+                </>
+            ) : (
+                <>
+                    <Download size={14} />
+                    Reçu PDF
+                </>
+            )}
+        </motion.button>
+    );
+};
+
+// ─── Page principale ───
 const TransactionsPage = () => {
     const [transactions, setTransactions] = useState([]);
     const [searchTerm, setSearchTerm] = useState('');
@@ -22,6 +82,13 @@ const TransactionsPage = () => {
             setLoading(false);
         }
     };
+
+    const filtered = transactions.filter(tx =>
+        tx.transaction_reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (tx.sender_account?.account_number || '').includes(searchTerm) ||
+        (tx.receiver_account?.account_number || '').includes(searchTerm) ||
+        (tx.description || '').toLowerCase().includes(searchTerm.toLowerCase())
+    );
 
     return (
         <div>
@@ -55,71 +122,118 @@ const TransactionsPage = () => {
                                 <th className="px-8 py-5 whitespace-nowrap">Montant</th>
                                 <th className="px-8 py-5 whitespace-nowrap">Statut</th>
                                 <th className="px-8 py-5 whitespace-nowrap">Date</th>
+                                <th className="px-8 py-5 whitespace-nowrap text-center">Reçu</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/30">
-                            {transactions
-                                .filter(tx => 
-                                    tx.transaction_reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                                    (tx.sender_account?.account_number || '').includes(searchTerm) ||
-                                    (tx.receiver_account?.account_number || '').includes(searchTerm) ||
-                                    (tx.description || '').toLowerCase().includes(searchTerm.toLowerCase())
-                                )
-                                .map((tx, idx) => (
+                            {loading && (
+                                <tr>
+                                    <td colSpan={7} className="text-center py-16 text-slate-500 italic">
+                                        Chargement...
+                                    </td>
+                                </tr>
+                            )}
+
+                            {!loading && filtered.length === 0 && (
+                                <tr>
+                                    <td colSpan={7} className="text-center py-16 text-slate-500 italic">
+                                        Aucune transaction trouvée.
+                                    </td>
+                                </tr>
+                            )}
+
+                            {filtered.map((tx, idx) => (
                                 <motion.tr
+                                    key={tx.id}
                                     initial={{ opacity: 0, y: 10 }}
                                     animate={{ opacity: 1, y: 0 }}
                                     transition={{ delay: idx * 0.03 }}
-                                    key={tx.id}
                                     className="hover:bg-slate-800/10 transition-colors"
                                 >
+                                    {/* Référence */}
                                     <td className="px-8 py-6">
-                                        <p className="text-white font-mono font-bold text-sm whitespace-nowrap">{tx.transaction_reference}</p>
-                                        <p className="text-xs text-slate-500 mt-0.5 whitespace-nowrap">{tx.description || 'Global Transaction'}</p>
-                                    </td>
-                                    <td className="px-8 py-6">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-2 rounded-lg ${tx.transaction_type === 'depot' ? 'bg-emerald-400/10 text-emerald-400' :
-                                                    tx.transaction_type === 'retrait' ? 'bg-rose-400/10 text-rose-400' :
-                                                        'bg-primary-400/10 text-primary-400'
-                                                }`}>
-                                                {tx.transaction_type === 'depot' ? <ArrowDownLeft size={16} /> : <ArrowUpRight size={16} />}
-                                            </div>
-                                            <span className="text-sm font-bold capitalize text-slate-300">{tx.transaction_type}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-8 py-6">
-                                        <div className="text-xs space-y-1 min-w-[200px]">
-                                            {tx.sender_account && <p className="text-slate-400">De: <span className="text-slate-200 font-bold">{tx.sender_account.account_number}</span></p>}
-                                            {tx.receiver_account && <p className="text-slate-400">À: <span className="text-slate-200 font-bold">{tx.receiver_account.account_number}</span></p>}
-                                        </div>
-                                    </td>
-                                    <td className="px-8 py-6">
-                                        <p className={`text-lg font-black whitespace-nowrap ${tx.transaction_type === 'depot' ? 'text-emerald-400' : 'text-slate-50'
-                                            }`}>
-                                            {tx.transaction_type === 'depot' ? '+' : '-'}{parseFloat(tx.amount).toLocaleString()} MAD
+                                        <p className="text-white font-mono font-bold text-sm whitespace-nowrap">
+                                            {tx.transaction_reference}
+                                        </p>
+                                        <p className="text-xs text-slate-500 mt-0.5 whitespace-nowrap">
+                                            {tx.description || 'Global Transaction'}
                                         </p>
                                     </td>
+
+                                    {/* Type */}
                                     <td className="px-8 py-6">
-                                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter ${tx.status === 'success' ? 'bg-emerald-400/20 text-emerald-400' : 'bg-rose-400/20 text-rose-400'
+                                        <div className="flex items-center gap-3">
+                                            <div className={`p-2 rounded-lg ${
+                                                tx.transaction_type === 'depot'
+                                                    ? 'bg-emerald-400/10 text-emerald-400'
+                                                    : tx.transaction_type === 'retrait'
+                                                    ? 'bg-rose-400/10 text-rose-400'
+                                                    : 'bg-primary-400/10 text-primary-400'
                                             }`}>
+                                                {tx.transaction_type === 'depot'
+                                                    ? <ArrowDownLeft size={16} />
+                                                    : <ArrowUpRight size={16} />}
+                                            </div>
+                                            <span className="text-sm font-bold capitalize text-slate-300">
+                                                {tx.transaction_type}
+                                            </span>
+                                        </div>
+                                    </td>
+
+                                    {/* Participants */}
+                                    <td className="px-8 py-6">
+                                        <div className="text-xs space-y-1 min-w-[200px]">
+                                            {tx.sender_account && (
+                                                <p className="text-slate-400">
+                                                    De: <span className="text-slate-200 font-bold">{tx.sender_account.account_number}</span>
+                                                </p>
+                                            )}
+                                            {tx.receiver_account && (
+                                                <p className="text-slate-400">
+                                                    À: <span className="text-slate-200 font-bold">{tx.receiver_account.account_number}</span>
+                                                </p>
+                                            )}
+                                        </div>
+                                    </td>
+
+                                    {/* Montant */}
+                                    <td className="px-8 py-6">
+                                        <p className={`text-lg font-black whitespace-nowrap ${
+                                            tx.transaction_type === 'depot' ? 'text-emerald-400' : 'text-slate-50'
+                                        }`}>
+                                            {tx.transaction_type === 'depot' ? '+' : '-'}
+                                            {parseFloat(tx.amount).toLocaleString()} MAD
+                                        </p>
+                                    </td>
+
+                                    {/* Statut */}
+                                    <td className="px-8 py-6">
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-tighter ${
+                                            tx.status === 'success'
+                                                ? 'bg-emerald-400/20 text-emerald-400'
+                                                : 'bg-rose-400/20 text-rose-400'
+                                        }`}>
                                             {tx.status}
                                         </span>
                                     </td>
+
+                                    {/* Date */}
                                     <td className="px-8 py-6 text-sm text-slate-500 whitespace-nowrap">
                                         {new Date(tx.created_at).toLocaleString()}
+                                    </td>
+
+                                    {/* Bouton Reçu PDF */}
+                                    <td className="px-8 py-6 text-center">
+                                        <DownloadReceiptButton
+                                            transactionId={tx.id}
+                                            reference={tx.transaction_reference}
+                                        />
                                     </td>
                                 </motion.tr>
                             ))}
                         </tbody>
                     </table>
                 </div>
-
-                {transactions.length === 0 && (
-                    <div className="text-center py-20 text-slate-500 italic">
-                        Aucun enregistrement de transaction trouvé.
-                    </div>
-                )}
             </div>
         </div>
     );

@@ -7,6 +7,7 @@ use App\Models\Transaction;
 use App\Models\BankAccount;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class TransactionController extends Controller
 {
@@ -89,5 +90,24 @@ class TransactionController extends Controller
     public function destroy(Transaction $transaction)
     {
         return response()->json(['error' => 'Transactions cannot be deleted'], 403);
+    }
+
+    /**
+     * Generate and download a PDF receipt for a transaction.
+     */
+    public function downloadReceipt(Transaction $transaction)
+    {
+        $transaction->load(['senderAccount.user', 'receiverAccount.user']);
+
+        $pdf = Pdf::loadView('pdf.transaction_receipt', compact('transaction'))
+            ->setPaper('a4', 'portrait')
+            ->setOption('dpi', 96)
+            ->setOption('isHtml5ParserEnabled', true)
+            ->setOption('isRemoteEnabled', false)
+            ->setOption('defaultFont', 'DejaVu Sans');
+
+        $filename = 'recu_transaction_' . $transaction->transaction_reference . '.pdf';
+
+        return $pdf->download($filename);
     }
 }

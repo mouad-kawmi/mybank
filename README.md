@@ -1,4 +1,4 @@
-# MyBank - Digital Banking Solution 🏦
+# MyBank - Digital Banking Solution 
 
 MyBank is a modern, full-stack digital banking application built with **Laravel 11** and **React JS**. It features a robust authentication system, role-based access control (RBAC), and a premium user interface.
 
